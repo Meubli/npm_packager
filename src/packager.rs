@@ -2,6 +2,7 @@ use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::config::{PackageLock, PackagerConfig};
 use crate::download::{Package, download_package_with_retry};
@@ -57,10 +58,15 @@ impl Packager {
             self.report_failed_packages(&output_dir, &failed_packages)?;
         }
 
-        // Compression
-        println!("Compression des packages...");
+        // Compression avec spinner
+        let spinner = ProgressBar::new_spinner();
+        spinner.enable_steady_tick(Duration::from_millis(100));
+        spinner.set_message("Compression des packages...");
+
         let zip_path = format!("{}.zip", output_dir.display());
         zip_dir(&output_dir, &zip_path)?;
+
+        spinner.finish_with_message("Compression terminée !");
 
         // Nettoyage
         fs::remove_dir_all(&output_dir).map_err(|e| PackagerError::Io {
@@ -68,7 +74,6 @@ impl Packager {
             reason: format!("Impossible de supprimer le répertoire temporaire: {}", e),
         })?;
 
-        println!("Terminé ! Archive créée: {}", zip_path);
         Ok(zip_path)
     }
 
