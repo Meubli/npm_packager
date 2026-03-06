@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::fs::{self};
 use std::time::Duration;
 
-use crate::download::download_package_with_retry;
+use crate::download::{Package, download_package_with_retry};
 use crate::system::{ensure_output_dir, get_timestamped_dir, zip_dir};
 
 mod download;
@@ -20,6 +20,7 @@ struct PackageLock {
 #[derive(Debug, Deserialize)]
 struct PackageInfo {
     resolved: Option<String>,
+    version: Option<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -60,14 +61,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let concurrent_downloads = args.concurrent;
     let max_retries: u16 = args.max_retries;
 
-    let urls: Vec<String> = lock
+    let packages: Vec<Package> = lock
         .packages
-        .values()
-        .filter_map(|pkg| pkg.resolved.clone())
+        .into_iter()
+        .filter_map(|(name, pkg_info)| {
+            let url = pkg_info.resolved?;
+            let version = pkg_info.version?;
+            let name = name.replace("node_modules/", "");
+            println!("{}", name);
+            Some(Package::new(url, name, version))
+        })
         .collect();
-    let failed_urls = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
 
-    let pb = ProgressBar::new(urls.len() as u64);
+    let total = packages.len();
+    let failed_packages = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
+
+    let pb = ProgressBar::new(total as u64);
     pb.set_style(
         ProgressStyle::with_template(
             "[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})",
@@ -75,22 +84,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap()
         .progress_chars("##-"),
     );
+    println!("Téléchargement des packages en cours...");
 
     // Créer un stream de futures et les exécuter avec buffered()
-    let futures = stream::iter(urls)
-        .map(|url| {
+    let futures = stream::iter(packages)
+        .map(|package| {
             let dir_name = dir_name.clone();
             let pb = pb.clone();
-            let failed_urls = failed_urls.clone();
+            let failed_packages = failed_packages.clone();
 
             async move {
-                match download_package_with_retry(&url, &dir_name, max_retries).await {
+                match download_package_with_retry(&package, &dir_name, max_retries).await {
                     Ok(_) => {
-                        // eprintln!("✓ {}", url);
+                        // eprintln!("✓ {}", package.name);
                     }
                     Err(e) => {
-                        eprintln!("✗ {}: {}", url, e);
-                        failed_urls.lock().await.push(url.clone());
+                        eprintln!("✗ {}: {}", package.name, e);
+                        failed_packages.lock().await.push(package.clone());
                     }
                 }
                 pb.inc(1);
@@ -102,17 +112,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Téléchargement terminé.");
 
-    // Afficher les URL qui ont échoué
-    let failed = failed_urls.lock().await;
+    // Afficher les packages qui ont échoué
+    let failed = failed_packages.lock().await;
     if !failed.is_empty() {
         eprintln!(
             "\n{} package(s) n'ont pas pu être téléchargés:",
             failed.len()
         );
-        for url in failed.iter() {
-            eprintln!("  - {}", url);
+        for pkg in failed.iter() {
+            eprintln!("  - {} ({})", pkg.name, pkg.version);
         }
-        let failed_list = failed.join("\n");
+        let failed_list = failed
+            .iter()
+            .map(|pkg| format!("{} ({}): {}", pkg.name, pkg.version, pkg.url))
+            .collect::<Vec<_>>()
+            .join("\n");
         fs::write(format!("{}/failed_packages.txt", &dir_name), failed_list)?;
     }
 
