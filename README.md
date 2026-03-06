@@ -14,20 +14,41 @@ A high-performance CLI tool for downloading and packaging npm dependencies in pa
 
 ## Installation
 
-### From GitHub (Development)
+### Quick Install (Recommended)
 
+**Linux/macOS:**
 ```bash
-git clone https://github.com/yourusername/npm_packager.git
-cd npm_packager
-cargo build --release
-./target/release/npm_packager --help
+curl -sSL https://raw.githubusercontent.com/Meubli/npm_packager/main/install.sh | bash
+```
+
+**Manual Download:**
+Download the pre-built binary for your platform from [Releases](https://github.com/Meubli/npm_packager/releases):
+
+- **Linux x86_64 (GNU)**: `npm_packager-x86_64-unknown-linux-gnu.tar.gz`
+- **Linux x86_64 (musl/Alpine)**: `npm_packager-x86_64-unknown-linux-musl.tar.gz`
+- **Linux ARM64 (GNU)**: `npm_packager-aarch64-unknown-linux-gnu.tar.gz`
+- **Linux ARM64 (musl)**: `npm_packager-aarch64-unknown-linux-musl.tar.gz`
+- **macOS Intel**: `npm_packager-x86_64-apple-darwin.tar.gz`
+- **macOS Apple Silicon (M1/M2)**: `npm_packager-aarch64-apple-darwin.tar.gz`
+- **Windows x86_64**: `npm_packager-x86_64-pc-windows-msvc.zip`
+
+Extract and run:
+```bash
+# Linux/macOS
+tar xzf npm_packager-x86_64-unknown-linux-gnu.tar.gz
+./npm_packager-x86_64-unknown-linux-gnu/npm_packager --help
+
+# Windows
+# Unzip and run npm_packager.exe
 ```
 
 ### From Source
 
 ```bash
+git clone https://github.com/Meubli/npm_packager.git
+cd npm_packager
 cargo build --release
-cargo run --release -- --package-lock package-lock.json
+./target/release/npm_packager --help
 ```
 
 ## Usage
