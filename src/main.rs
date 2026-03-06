@@ -1,11 +1,10 @@
+use clap::Parser;
 use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::{self};
-use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Semaphore;
 
 use crate::download::download_package_with_retry;
 use crate::system::{ensure_output_dir, get_timestamped_dir, zip_dir};
@@ -22,6 +21,27 @@ struct PackageLock {
 struct PackageInfo {
     resolved: Option<String>,
 }
+
+#[derive(Parser, Debug)]
+#[command(
+    author,
+    version,
+    about = "Télécharge et empaquette les dépendances npm"
+)]
+struct Args {
+    /// Chemin vers le fichier package-lock.json
+    #[arg(short, long, default_value = "package-lock.json")]
+    package_lock: String,
+
+    /// Nombre de téléchargements concurrents
+    #[arg(short, long, default_value = "100")]
+    concurrent: usize,
+
+    /// Nombre maximal de tentatives pour chaque téléchargement
+    #[arg(short, long, default_value = "4")]
+    max_retries: u16,
+}
+
 fn read_package_lock(path: &str) -> Result<PackageLock, Box<dyn std::error::Error>> {
     let content = fs::read_to_string(path)?;
     let lockfile: PackageLock = serde_json::from_str(&content)?;
@@ -30,13 +50,15 @@ fn read_package_lock(path: &str) -> Result<PackageLock, Box<dyn std::error::Erro
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let lock = read_package_lock("package-lock.json")?;
+    let args = Args::parse();
+
+    let lock = read_package_lock(&args.package_lock)?;
 
     let dir_name = get_timestamped_dir();
     ensure_output_dir(&dir_name)?;
 
-    let concurrent_downloads = 100;
-    let max_retries: u16 = 4;
+    let concurrent_downloads = args.concurrent;
+    let max_retries: u16 = args.max_retries;
 
     let urls: Vec<String> = lock
         .packages
