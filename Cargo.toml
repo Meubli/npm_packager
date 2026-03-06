@@ -2,10 +2,10 @@
 name = "npm_packager"
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Meubli <meublikoo@gmail.com>"]
 license = "MIT"
 description = "High-performance CLI tool for downloading and packaging npm dependencies in parallel"
-repository = "https://github.com/yourusername/npm_packager"
+repository = "https://github.com/Meubli/npm_packager"
 readme = "README.md"
 keywords = ["npm", "download", "cli", "parallel"]
 categories = ["command-line-utilities"]
