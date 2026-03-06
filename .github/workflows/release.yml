@@ -6,26 +6,8 @@ on:
       - 'v*'
 
 jobs:
-  create-release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-      - name: Create GitHub Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
-
   build:
     name: Build ${{ matrix.target }}
-    needs: create-release
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -102,25 +84,39 @@ jobs:
           copy LICENSE npm_packager-${{ matrix.target }}\
           powershell Compress-Archive -Path npm_packager-${{ matrix.target }} -DestinationPath npm_packager-${{ matrix.target }}.zip
           dir npm_packager-${{ matrix.target }}.zip
-
-      - name: Upload Release Asset (Unix)
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: npm_packager-${{ matrix.target }}.tar.gz
-          asset_name: npm_packager-${{ matrix.target }}.tar.gz
-          asset_content_type: application/gzip
-        if: runner.os != 'Windows'
       
-      - name: Upload Release Asset (Windows)
-        uses: actions/upload-release-asset@v1
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: npm_packager-${{ matrix.target }}
+          path: |
+            npm_packager-${{ matrix.target }}.tar.gz
+            npm_packager-${{ matrix.target }}.zip
+          retention-days: 1
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+      
+      - name: Prepare artifacts
+        run: |
+          mkdir -p release_files
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release_files/ \;
+          ls -lh release_files/
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release_files/*
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: npm_packager-${{ matrix.target }}.zip
-          asset_name: npm_packager-${{ matrix.target }}.zip
-          asset_content_type: application/zip
-        if: runner.os == 'Windows'
