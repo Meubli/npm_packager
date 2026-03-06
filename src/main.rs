@@ -21,6 +21,7 @@ struct PackageLock {
 struct PackageInfo {
     resolved: Option<String>,
     version: Option<String>,
+    integrity: Option<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -67,9 +68,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .filter_map(|(name, pkg_info)| {
             let url = pkg_info.resolved?;
             let version = pkg_info.version?;
+            let integrity = pkg_info.integrity?;
             let name = name.replace("node_modules/", "");
-            println!("{}", name);
-            Some(Package::new(url, name, version))
+            Some(Package::new(url, name, version, integrity))
         })
         .collect();
 
@@ -99,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // eprintln!("✓ {}", package.name);
                     }
                     Err(e) => {
-                        eprintln!("✗ {}: {}", package.name, e);
+                        eprintln!("✗ {}-{}: {}", package.name, package.version, e);
                         failed_packages.lock().await.push(package.clone());
                     }
                 }
