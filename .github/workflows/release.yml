@@ -86,7 +86,7 @@ jobs:
           dir npm_packager-${{ matrix.target }}.zip
       
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: npm_packager-${{ matrix.target }}
           path: |
@@ -102,7 +102,7 @@ jobs:
       - uses: actions/checkout@v3
       
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
       
