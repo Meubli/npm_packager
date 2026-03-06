@@ -1,9 +1,12 @@
+use std::path::Path;
 use std::time::Duration;
 
 use base64::engine::{Engine as _, general_purpose};
 use reqwest::get;
 use sha2::{Digest, Sha512};
 use tokio::{io::AsyncWriteExt, time::sleep};
+
+use crate::error::{PackagerError, PackagerResult};
 
 #[derive(Debug, Clone)]
 pub struct Package {
@@ -24,37 +27,35 @@ impl Package {
     }
 
     fn filename(&self) -> String {
-        format!("{}-{}", self.name.replace("/", "-"), self.version)
+        format!("{}-{}", self.name.replace('/', "-"), self.version)
     }
-}
-
-enum DownloadError {
-    TryError(String),
-    IntegrityError(String),
 }
 
 pub async fn download_package_with_retry(
     package: &Package,
-    outputdir: &str,
+    output_dir: &Path,
     max_retry: u16,
-) -> Result<(), String> {
+) -> PackagerResult<()> {
     let mut retry = 0;
     let mut delay = Duration::from_millis(500);
 
     loop {
-        match download_package(package, outputdir).await {
+        match download_package(package, output_dir).await {
             Ok(_) => return Ok(()),
-            Err(DownloadError::IntegrityError(msg)) => {
-                return Err(msg);
+            Err(PackagerError::Integrity { reason, .. }) => {
+                return Err(PackagerError::Integrity {
+                    url: package.url.clone(),
+                    reason,
+                });
             }
-            Err(DownloadError::TryError(e)) => {
+            Err(e) => {
                 retry += 1;
 
                 if retry >= max_retry {
-                    return Err(format!(
-                        "Échec après {} tentatives pour {}: {}",
-                        max_retry, package.name, e
-                    ));
+                    return Err(PackagerError::Download {
+                        url: package.url.clone(),
+                        reason: format!("Échec après {} tentatives: {}", max_retry, e),
+                    });
                 }
 
                 eprintln!(
@@ -68,48 +69,62 @@ pub async fn download_package_with_retry(
     }
 }
 
-async fn download_package(package: &Package, outputdir: &str) -> Result<(), DownloadError> {
+async fn download_package(package: &Package, output_dir: &Path) -> PackagerResult<()> {
     let filename = package.filename();
 
     let response = get(&package.url)
         .await
-        .map_err(|e| DownloadError::TryError(e.to_string()))?;
+        .map_err(|e| PackagerError::Download {
+            url: package.url.clone(),
+            reason: e.to_string(),
+        })?;
 
     if !response.status().is_success() {
-        return Err(DownloadError::TryError(format!(
-            "Statut HTTP: {}",
-            response.status()
-        )));
+        return Err(PackagerError::Download {
+            url: package.url.clone(),
+            reason: format!("Statut HTTP: {}", response.status()),
+        });
     }
 
-    let path = format!("{}/{}", outputdir, &filename);
+    let path = output_dir.join(&filename);
 
     let mut file = tokio::fs::File::create(&path)
         .await
-        .map_err(|e| DownloadError::TryError(e.to_string()))?;
+        .map_err(|e| PackagerError::Io {
+            path: path.clone(),
+            reason: e.to_string(),
+        })?;
+
     let bytes = response
         .bytes()
         .await
-        .map_err(|e| DownloadError::TryError(e.to_string()))?;
+        .map_err(|e| PackagerError::Download {
+            url: package.url.clone(),
+            reason: e.to_string(),
+        })?;
 
-    verify_integrity(&bytes, &package.integrity)?;
+    verify_integrity(&bytes, &package.integrity, &package.url)?;
 
     file.write_all(&bytes)
         .await
-        .map_err(|e| DownloadError::TryError(e.to_string()))?;
+        .map_err(|e| PackagerError::Io {
+            path,
+            reason: e.to_string(),
+        })?;
 
     Ok(())
 }
 
 /// Vérifie l'intégrité du fichier en comparant le hash SHA512
-fn verify_integrity(bytes: &[u8], integrity_string: &str) -> Result<(), DownloadError> {
-    // Format: "sha512-{hash_en_base64}"
+/// Format attendu: "sha512-{hash_en_base64}"
+fn verify_integrity(bytes: &[u8], integrity_string: &str, url: &str) -> PackagerResult<()> {
     let parts: Vec<&str> = integrity_string.splitn(2, '-').collect();
 
     if parts.len() != 2 {
-        return Err(DownloadError::IntegrityError(
-            "Format d'intégrité invalide".to_string(),
-        ));
+        return Err(PackagerError::Integrity {
+            url: url.to_string(),
+            reason: "Format d'intégrité invalide".to_string(),
+        });
     }
 
     let algorithm = parts[0].to_lowercase();
@@ -123,20 +138,23 @@ fn verify_integrity(bytes: &[u8], integrity_string: &str) -> Result<(), Download
             let hash_result = hasher.finalize();
 
             // Convertir en base64 (npm utilise le base64)
-            let computed_base64 = general_purpose::STANDARD.encode(&hash_result);
+            let computed_base64 = general_purpose::STANDARD.encode(hash_result);
 
             if computed_base64 == expected_hash {
                 Ok(())
             } else {
-                Err(DownloadError::IntegrityError(format!(
-                    "SHA512 invalide. Attendu: {}, Obtenu: {}",
-                    expected_hash, computed_base64
-                )))
+                Err(PackagerError::Integrity {
+                    url: url.to_string(),
+                    reason: format!(
+                        "SHA512 invalide. Attendu: {}, Obtenu: {}",
+                        expected_hash, computed_base64
+                    ),
+                })
             }
         }
-        other => Err(DownloadError::IntegrityError(format!(
-            "Algorithme non supporté: {}",
-            other
-        ))),
+        other => Err(PackagerError::Integrity {
+            url: url.to_string(),
+            reason: format!("Algorithme non supporté: {}", other),
+        }),
     }
 }
