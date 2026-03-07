@@ -21,14 +21,17 @@ jobs:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             use_cross: true
+            pre_build: "apt-get update && apt-get install -y pkg-config libssl-dev"
             
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             use_cross: true
+            pre_build: "apt-get update && apt-get install -y pkg-config libssl-dev:arm64"
             
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
             use_cross: true
+            pre_build: "apt-get update && apt-get install -y pkg-config libssl-dev:arm64"
           
           # macOS builds
           - target: x86_64-apple-darwin
@@ -55,6 +58,10 @@ jobs:
       - name: Install cross
         if: matrix.use_cross
         run: cargo install cross
+      
+      - name: Install cross dependencies
+        if: matrix.pre_build
+        run: sudo bash -c "${{ matrix.pre_build }}"
       
       - name: Build
         run: |
