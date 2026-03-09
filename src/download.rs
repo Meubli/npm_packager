@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use base64::engine::{Engine as _, general_purpose};
+use base64::engine::{general_purpose, Engine as _};
 use reqwest::get;
 use sha2::{Digest, Sha512};
 use tokio::{io::AsyncWriteExt, time::sleep};
@@ -27,7 +27,7 @@ impl Package {
     }
 
     fn filename(&self) -> String {
-        format!("{}-{}", self.name.replace('/', "-"), self.version)
+        format!("{}-{}.tgz", self.name.replace('/', "-"), self.version)
     }
 }
 
