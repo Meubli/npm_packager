@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - "v*"
+# We need this to be able to create releases.
+permissions:
+  contents: write
 
 jobs:
   build:
